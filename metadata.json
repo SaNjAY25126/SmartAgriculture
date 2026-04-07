@@ -1,0 +1,5 @@
+{
+  "name": "Smart Agriculture Management System",
+  "description": "A lightweight agriculture marketplace and farm-support dashboard for farmers, dealers, and admins.",
+  "requestFramePermissions": ["geolocation"]
+}

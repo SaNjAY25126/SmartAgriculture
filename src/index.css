@@ -1,0 +1,52 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&family=Playfair+Display:wght@700&family=Montserrat:wght@600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
+  --font-display: "Montserrat", sans-serif;
+
+  --color-primary-50: #e8f5e9;
+  --color-primary-100: #c8e6c9;
+  --color-primary-500: #4caf50;
+  --color-primary-600: #43a047;
+  --color-primary-700: #388e3c;
+  --color-primary-800: #2e7d32;
+  --color-primary-900: #1b5e20;
+
+  --color-accent-orange: #ff9800;
+  --color-accent-orange-dark: #f57c00;
+  --color-accent-yellow: #ffd966;
+  --color-accent-blue: #2196f3;
+  --color-accent-purple: #9c27b0;
+}
+
+@layer base {
+  body {
+    @apply bg-[#f1f8e9] text-gray-800 font-sans;
+  }
+}
+
+.glass-card {
+  @apply bg-white/80 backdrop-blur-sm border border-white/20 shadow-sm rounded-2xl;
+}
+
+.sidebar-gradient {
+  @apply bg-linear-to-b from-primary-800 to-primary-900;
+}
+
+.btn-primary {
+  @apply bg-linear-to-r from-primary-600 to-primary-700 text-white font-semibold py-2 px-4 rounded-xl hover:shadow-lg transition-all active:scale-95;
+}
+
+.btn-orange {
+  @apply bg-linear-to-r from-accent-orange to-accent-orange-dark text-white font-semibold py-2 px-4 rounded-xl hover:shadow-lg transition-all active:scale-95;
+}
+
+.btn-blue {
+  @apply bg-linear-to-r from-blue-500 to-blue-600 text-white font-semibold py-2 px-4 rounded-xl hover:shadow-lg transition-all active:scale-95;
+}
+
+.btn-red {
+  @apply bg-linear-to-r from-red-500 to-red-600 text-white font-semibold py-2 px-4 rounded-xl hover:shadow-lg transition-all active:scale-95;
+}
