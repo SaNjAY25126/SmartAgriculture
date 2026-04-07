@@ -95,7 +95,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ role, onBack }) => {
         .eq('password', password)
         .single();
 
-      if (demoError || !demoProfile) {
+      if (demoError) {
+        if (demoError.code === 'PGRST116') {
+          throw new Error('Invalid login credentials. Please check your email and password.');
+        } else if (demoError.code === '42501') {
+          throw new Error('Database Permission Denied. Please ensure you have run the SQL script in your Supabase SQL Editor.');
+        } else if (demoError.code === '42P01') {
+          throw new Error('Database Table Not Found. Please ensure you have run the SQL script in your Supabase SQL Editor.');
+        } else {
+          throw new Error(`Database Error: ${demoError.message} (Code: ${demoError.code})`);
+        }
+      }
+
+      if (!demoProfile) {
         throw new Error('Invalid login credentials. Please check your email and password.');
       }
 
