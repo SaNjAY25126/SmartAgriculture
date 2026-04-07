@@ -30,9 +30,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [cropPlans, setCropPlans] = useState<CropPlan[]>([]);
   const [waterRecords, setWaterRecords] = useState<WaterRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const currentUserRef = React.useRef<User | null>(null);
 
-  const fetchData = async (userId?: string) => {
+  useEffect(() => {
+    currentUserRef.current = currentUser;
+  }, [currentUser]);
+
+  const fetchData = async (userId?: string, userRole?: string) => {
     try {
+      // Use provided args or fall back to current state (via ref to avoid stale closures)
+      const effectiveUserId = userId || currentUserRef.current?.id;
+      const effectiveRole = userRole || currentUserRef.current?.role;
+
       // 1. Fetch Public Data (Always accessible)
       const [
         { data: productsData, error: pError },
@@ -49,15 +58,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (profilesData) setFarmers(profilesData);
 
       // 2. Fetch Private Data (Only if logged in)
-      if (userId) {
+      if (effectiveUserId) {
+        // Determine order query based on role
+        let ordersQuery = supabase.from('orders').select('*');
+        
+        // Farmers only see their own orders, Dealers/Admins see all
+        if (effectiveRole === 'farmer') {
+          ordersQuery = ordersQuery.eq('farmer_id', effectiveUserId);
+        }
+        
         const [
           { data: ordersData, error: oError },
           { data: cropPlansData, error: cpError },
           { data: waterRecordsData, error: wrError }
         ] = await Promise.all([
-          supabase.from('orders').select('*').eq('farmer_id', userId).order('created_at', { ascending: false }),
-          supabase.from('crop_plans').select('*').eq('farmer_id', userId),
-          supabase.from('water_records').select('*').eq('farmer_id', userId)
+          ordersQuery.order('created_at', { ascending: false }),
+          supabase.from('crop_plans').select('*').eq('farmer_id', effectiveUserId),
+          supabase.from('water_records').select('*').eq('farmer_id', effectiveUserId)
         ]);
 
         if (oError) console.error('Orders error:', oError);
@@ -82,7 +99,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setLoading(true);
     const timeoutId = setTimeout(() => setLoading(false), 8000);
     try {
-      await fetchData(currentUser?.id);
+      await fetchData(currentUser?.id, currentUser?.role);
     } finally {
       clearTimeout(timeoutId);
       setLoading(false);
@@ -91,13 +108,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     if (currentUser?.id) {
-      console.log('Current user changed, fetching private data for:', currentUser.id);
-      fetchData(currentUser.id);
+      console.log('Current user changed, fetching private data for:', currentUser.id, currentUser.role);
+      fetchData(currentUser.id, currentUser.role);
     } else {
       console.log('Current user is null, fetching public data only');
       fetchData();
     }
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.role]);
 
   useEffect(() => {
     let mounted = true;
@@ -167,7 +184,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             profile
           });
           // Fetch private data after login
-          fetchData(profile.id);
+          fetchData(profile.id, profile.role);
         }
       } else if (event === 'SIGNED_OUT') {
         console.log('Auth change: user signed out');
@@ -177,16 +194,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     // Real-time subscriptions
+    const handleRealtimeUpdate = () => {
+      fetchData();
+    };
+
     const productSub = supabase.channel('products-all')
-      .on('postgres_changes' as any, { event: '*', table: 'products' }, fetchData)
+      .on('postgres_changes' as any, { event: '*', table: 'products' }, handleRealtimeUpdate)
       .subscribe();
 
     const orderSub = supabase.channel('orders-all')
-      .on('postgres_changes' as any, { event: '*', table: 'orders' }, fetchData)
+      .on('postgres_changes' as any, { event: '*', table: 'orders' }, handleRealtimeUpdate)
       .subscribe();
 
     const profileSub = supabase.channel('profiles-all')
-      .on('postgres_changes' as any, { event: '*', table: 'profiles' }, fetchData)
+      .on('postgres_changes' as any, { event: '*', table: 'profiles' }, handleRealtimeUpdate)
       .subscribe();
 
     return () => {
