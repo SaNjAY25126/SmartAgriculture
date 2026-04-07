@@ -13,7 +13,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     quantity: 100,
     description: 'High nitrogen fertilizer for rapid plant growth.',
     category: 'Nitrogenous',
-    image: 'https://picsum.photos/seed/urea/400/300'
+    created_at: new Date().toISOString()
   },
   {
     id: 'p2',
@@ -22,7 +22,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     quantity: 50,
     description: 'Excellent source of P and nitrogen for plant nutrition.',
     category: 'Phosphatic',
-    image: 'https://picsum.photos/seed/dap/400/300'
+    created_at: new Date().toISOString()
   },
   {
     id: 'p3',
@@ -31,7 +31,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     quantity: 75,
     description: 'Helps in root development and disease resistance.',
     category: 'Potassic',
-    image: 'https://picsum.photos/seed/potash/400/300'
+    created_at: new Date().toISOString()
   },
   {
     id: 'p4',
@@ -40,7 +40,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     quantity: 120,
     description: 'Balanced fertilizer for all types of crops.',
     category: 'Complex',
-    image: 'https://picsum.photos/seed/npk/400/300'
+    created_at: new Date().toISOString()
   },
   {
     id: 'p5',
@@ -49,7 +49,7 @@ export const INITIAL_PRODUCTS: Product[] = [
     quantity: 200,
     description: 'Natural soil conditioner and nutrient source.',
     category: 'Organic',
-    image: 'https://picsum.photos/seed/compost/400/300'
+    created_at: new Date().toISOString()
   }
 ];
 

@@ -36,8 +36,10 @@ export const AdminDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) =
     { label: 'Total Farmers', value: farmers.length, icon: Users, color: 'bg-blue-100 text-blue-600' },
     { label: 'Total Products', value: products.length, icon: Package, color: 'bg-green-100 text-green-600' },
     { label: 'Total Orders', value: orders.length, icon: ShoppingCart, color: 'bg-purple-100 text-purple-600' },
-    { label: 'Revenue', value: `₹${orders.reduce((acc, o) => acc + o.totalPrice, 0)}`, icon: TrendingUp, color: 'bg-orange-100 text-orange-600' },
+    { label: 'Revenue', value: `₹${orders.reduce((acc, o) => acc + Number(o.total_price), 0)}`, icon: TrendingUp, color: 'bg-orange-100 text-orange-600' },
   ];
+
+  const lowStockCount = products.filter(p => p.quantity <= 20).length;
 
   const orderStatusData = [
     { name: 'Pending', value: orders.filter(o => o.status === 'pending').length, color: '#f59e0b' },
@@ -61,7 +63,7 @@ export const AdminDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) =
           onClick={() => { if(confirm('Reset all demo data?')) resetData(); }}
           className="btn-red flex items-center gap-2"
         >
-          <RefreshCw className="w-4 h-4" /> Reset Demo Data
+          <RefreshCw className="w-4 h-4" /> Reset Data
         </button>
       </div>
 
@@ -78,6 +80,13 @@ export const AdminDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) =
           </div>
         ))}
       </div>
+
+      {lowStockCount > 0 && (
+        <div className="bg-orange-50 border border-orange-200 p-4 rounded-2xl flex items-center gap-3 text-orange-700">
+          <AlertCircle className="w-5 h-5" />
+          <p className="text-sm font-bold">Alert: {lowStockCount} products are below the stock threshold (20 units).</p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
@@ -149,9 +158,9 @@ export const AdminDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) =
               {orders.slice(0, 5).map(order => (
                 <tr key={order.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4 font-mono text-xs text-gray-500">#{order.id.slice(-6)}</td>
-                  <td className="px-6 py-4 font-bold">{order.farmerName}</td>
-                  <td className="px-6 py-4 text-gray-600">{order.productName}</td>
-                  <td className="px-6 py-4 font-bold text-primary-700">₹{order.totalPrice}</td>
+                  <td className="px-6 py-4 font-bold">{order.farmer_name}</td>
+                  <td className="px-6 py-4 text-gray-600">{order.product_name}</td>
+                  <td className="px-6 py-4 font-bold text-primary-700">₹{order.total_price}</td>
                   <td className="px-6 py-4">
                     <span className={cn(
                       "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
@@ -230,9 +239,9 @@ export const AdminDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) =
         {activeTab === 'overview' && renderOverview()}
         {activeTab === 'farmers' && renderTable('Registered Farmers', farmers, [
           { key: 'username', label: 'Username', render: (f) => <span className="font-bold">{f.username}</span> },
-          { key: 'village', label: 'Village', render: (f) => f.profile?.village || '-' },
-          { key: 'phone', label: 'Phone', render: (f) => f.profile?.phone || '-' },
-          { key: 'landArea', label: 'Land Area', render: (f) => f.profile?.landArea ? `${f.profile.landArea} Acres` : '-' },
+          { key: 'village', label: 'Village', render: (f) => f.village || '-' },
+          { key: 'phone', label: 'Phone', render: (f) => f.phone || '-' },
+          { key: 'land_area', label: 'Land Area', render: (f) => f.land_area ? `${f.land_area} Acres` : '-' },
           { key: 'id', label: 'System ID', render: (f) => <span className="font-mono text-xs text-gray-400">{f.id}</span> },
         ])}
         {activeTab === 'products' && renderTable('Product Catalog', products, [
@@ -250,9 +259,9 @@ export const AdminDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) =
         ])}
         {activeTab === 'orders' && renderTable('All Orders', orders, [
           { key: 'id', label: 'Order ID', render: (o) => <span className="font-mono text-xs">#{o.id.slice(-6)}</span> },
-          { key: 'farmerName', label: 'Farmer', render: (o) => <span className="font-bold">{o.farmerName}</span> },
-          { key: 'productName', label: 'Product', render: (o) => o.productName },
-          { key: 'totalPrice', label: 'Total', render: (o) => <span className="font-bold text-primary-700">₹{o.totalPrice}</span> },
+          { key: 'farmer_name', label: 'Farmer', render: (o) => <span className="font-bold">{o.farmer_name}</span> },
+          { key: 'product_name', label: 'Product', render: (o) => o.product_name },
+          { key: 'total_price', label: 'Total', render: (o) => <span className="font-bold text-primary-700">₹{o.total_price}</span> },
           { key: 'status', label: 'Status', render: (o) => (
             <span className={cn(
               "px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider",
@@ -294,17 +303,10 @@ export const AdminDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) =
                 <div className="space-y-4">
                   <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
                     <div>
-                      <p className="font-bold">Reset Demo System</p>
-                      <p className="text-xs text-gray-500">Clears all local storage and resets to defaults.</p>
+                      <p className="font-bold">Reset System Cache</p>
+                      <p className="text-xs text-gray-500">Refresh all local data from Supabase.</p>
                     </div>
-                    <button onClick={resetData} className="btn-red px-4 py-2 text-sm">Reset Now</button>
-                  </div>
-                  <div className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl">
-                    <div>
-                      <p className="font-bold">Database Backup</p>
-                      <p className="text-xs text-gray-500">Download current state as JSON.</p>
-                    </div>
-                    <button className="btn-blue px-4 py-2 text-sm">Download</button>
+                    <button onClick={resetData} className="btn-blue px-4 py-2 text-sm">Refresh Now</button>
                   </div>
                 </div>
               </div>

@@ -15,57 +15,116 @@ import {
   CheckCircle2,
   Clock,
   AlertCircle,
-  Package
+  Package,
+  Loader2,
+  Navigation
 } from 'lucide-react';
 import { useApp } from '../AppContext';
-import { cn } from '../lib/utils';
+import { supabase } from '../supabase';
 import { CropPlan, WaterRecord, Order, Product, WeatherData } from '../types';
 import { SEASONS } from '../constants';
 import { format } from 'date-fns';
+import { cn } from '../lib/utils';
 
 export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) => {
   const { 
     currentUser, setCurrentUser, 
     products, 
-    orders, setOrders,
+    orders,
     cropPlans, setCropPlans,
     waterRecords, setWaterRecords
   } = useApp();
 
   const [weather, setWeather] = useState<WeatherData | null>(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [showOrderSuccess, setShowOrderSuccess] = useState(false);
+  const [orderLoading, setOrderLoading] = useState<string | null>(null);
+
+  const fetchWeather = async (lat: number, lon: number) => {
+    const apiKey = import.meta.env.VITE_WEATHER_API_KEY;
+    if (!apiKey) {
+      console.warn('Weather API key missing.');
+      return;
+    }
+
+    setWeatherLoading(true);
+    try {
+      const response = await fetch(`https://api.weatherapi.com/v1/current.json?key=${apiKey}&q=${lat},${lon}&aqi=no`);
+      const data = await response.json();
+      
+      if (data.current) {
+        setWeather({
+          temp: data.current.temp_c,
+          condition: data.current.condition.text,
+          humidity: data.current.humidity,
+          windSpeed: data.current.wind_kph,
+          location: data.location.name,
+          advice: data.current.temp_c > 30 ? 'High temperature! Ensure adequate irrigation.' : 'Optimal conditions for farming activity.'
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching weather:', error);
+    } finally {
+      setWeatherLoading(false);
+    }
+  };
+
+  const handleGetLocation = () => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          fetchWeather(position.coords.latitude, position.coords.longitude);
+        },
+        (error) => {
+          console.error('Error getting location:', error);
+          alert('Could not access location. Please enable location permissions.');
+        }
+      );
+    }
+  };
 
   useEffect(() => {
-    // Mock weather fetch
-    setWeather({
-      temp: 28,
-      condition: 'Sunny',
-      humidity: 65,
-      windSpeed: 12,
-      advice: 'Great day for sowing! Soil moisture is optimal.'
-    });
+    handleGetLocation();
   }, []);
 
-  const myOrders = orders.filter(o => o.farmerId === currentUser?.id);
-  const myCrops = cropPlans.filter(c => c.farmerId === currentUser?.id);
-  const myWater = waterRecords.filter(w => w.farmerId === currentUser?.id);
+  const myOrders = orders.filter(o => o.farmer_id === currentUser?.id);
+  const myCrops = cropPlans.filter(c => c.farmer_id === currentUser?.id);
+  const myWater = waterRecords.filter(w => w.farmer_id === currentUser?.id);
 
-  const handlePlaceOrder = (product: Product, quantity: number) => {
-    const newOrder: Order = {
-      id: `ord-${Date.now()}`,
-      farmerId: currentUser!.id,
-      farmerName: currentUser!.username,
-      productId: product.id,
-      productName: product.name,
-      quantity,
-      totalPrice: product.price * quantity,
-      status: 'pending',
-      date: new Date().toISOString()
-    };
-    setOrders([newOrder, ...orders]);
-    setShowOrderSuccess(true);
-    setTimeout(() => setShowOrderSuccess(false), 3000);
+  const handlePlaceOrder = async (product: Product, quantity: number) => {
+    if (!currentUser) return;
+    setOrderLoading(product.id);
+    
+    try {
+      const { error } = await supabase.from('orders').insert({
+        farmer_id: currentUser.id,
+        farmer_name: currentUser.username,
+        product_id: product.id,
+        product_name: product.name,
+        quantity,
+        total_price: product.price * quantity,
+        status: 'pending'
+      });
+
+      if (error) throw error;
+
+      // Update product quantity
+      const { error: productError } = await supabase
+        .from('products')
+        .update({ quantity: product.quantity - quantity })
+        .eq('id', product.id);
+
+      if (productError) throw productError;
+
+      setShowOrderSuccess(true);
+      setTimeout(() => setShowOrderSuccess(false), 3000);
+    } catch (error) {
+      console.error('Error placing order:', error);
+      alert('Failed to place order. Please try again.');
+    } finally {
+      setOrderLoading(null);
+    }
   };
 
   const renderDashboard = () => (
@@ -106,7 +165,7 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
           </div>
           <div>
             <p className="text-sm text-gray-500 font-medium">Total Spent</p>
-            <p className="text-2xl font-bold">₹{myOrders.reduce((acc, o) => acc + o.totalPrice, 0)}</p>
+            <p className="text-2xl font-bold">₹{myOrders.reduce((acc, o) => acc + Number(o.total_price), 0)}</p>
           </div>
         </div>
       </div>
@@ -124,12 +183,12 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
                     <Package className="w-5 h-5 text-gray-600" />
                   </div>
                   <div>
-                    <p className="font-bold">{order.productName}</p>
-                    <p className="text-xs text-gray-500">{format(new Date(order.date), 'MMM d, yyyy')}</p>
+                    <p className="font-bold">{order.product_name}</p>
+                    <p className="text-xs text-gray-500">{format(new Date(order.created_at), 'MMM d, yyyy')}</p>
                   </div>
                 </div>
                 <div className="text-right">
-                  <p className="font-bold text-primary-700">₹{order.totalPrice}</p>
+                  <p className="font-bold text-primary-700">₹{order.total_price}</p>
                   <span className={cn(
                     "text-[10px] uppercase tracking-wider font-bold px-2 py-1 rounded-full",
                     order.status === 'pending' ? "bg-orange-100 text-orange-600" :
@@ -146,16 +205,29 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
         </div>
 
         <div className="space-y-6">
-          <h3 className="text-xl font-bold flex items-center gap-2">
-            <CloudSun className="text-primary-600 w-5 h-5" /> Weather & Advice
+          <h3 className="text-xl font-bold flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CloudSun className="text-primary-600 w-5 h-5" /> Weather & Advice
+            </div>
+            <button onClick={handleGetLocation} className="text-xs text-primary-600 hover:underline flex items-center gap-1">
+              <Navigation className="w-3 h-3" /> Refresh Location
+            </button>
           </h3>
-          {weather && (
+          {weatherLoading ? (
+            <div className="bg-white p-12 rounded-3xl shadow-xl border border-gray-100 flex flex-col items-center justify-center">
+              <Loader2 className="w-8 h-8 text-primary-600 animate-spin mb-2" />
+              <p className="text-gray-500">Fetching local weather...</p>
+            </div>
+          ) : weather ? (
             <div className="bg-linear-to-br from-primary-600 to-primary-800 text-white p-8 rounded-3xl shadow-xl relative overflow-hidden">
               <div className="relative z-10">
                 <div className="flex items-center justify-between mb-8">
                   <div>
                     <p className="text-5xl font-bold mb-1">{weather.temp}°C</p>
                     <p className="text-primary-100 font-medium">{weather.condition}</p>
+                    <p className="text-xs text-primary-200 mt-1 flex items-center gap-1">
+                      <MapPin className="w-3 h-3" /> {weather.location}
+                    </p>
                   </div>
                   <CloudSun className="w-16 h-16 text-primary-200 opacity-50" />
                 </div>
@@ -174,6 +246,12 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
                 </div>
               </div>
               <div className="absolute -top-10 -right-10 w-40 h-40 bg-white/10 rounded-full blur-3xl" />
+            </div>
+          ) : (
+            <div className="bg-white p-12 rounded-3xl shadow-xl border border-gray-100 text-center">
+              <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500 mb-4">Weather data unavailable. Please enable location access.</p>
+              <button onClick={handleGetLocation} className="btn-primary">Enable Location</button>
             </div>
           )}
         </div>
@@ -197,38 +275,35 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
             whileHover={{ y: -5 }}
             className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden group"
           >
-            <div className="h-48 overflow-hidden relative">
-              <img 
-                src={product.image} 
-                alt={product.name} 
-                className="w-full h-full object-cover transition-transform group-hover:scale-110"
-                referrerPolicy="no-referrer"
-              />
-              <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold text-primary-700">
-                {product.category}
+            <div className="p-8">
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <div className="bg-primary-50 text-primary-700 px-3 py-1 rounded-full text-xs font-bold w-fit mb-2">
+                    {product.category}
+                  </div>
+                  <h4 className="text-2xl font-bold text-gray-900">{product.name}</h4>
+                </div>
+                <p className="text-2xl font-bold text-accent-orange-dark">₹{product.price}</p>
               </div>
-            </div>
-            <div className="p-6">
-              <div className="flex justify-between items-start mb-2">
-                <h4 className="text-xl font-bold text-gray-900">{product.name}</h4>
-                <p className="text-xl font-bold text-accent-orange-dark">₹{product.price}</p>
-              </div>
-              <p className="text-sm text-gray-500 mb-6 line-clamp-2">{product.description}</p>
-              <div className="flex items-center justify-between">
-                <p className={cn(
-                  "text-xs font-bold px-2 py-1 rounded-full",
-                  product.quantity > 20 ? "bg-green-100 text-green-600" : 
-                  product.quantity > 0 ? "bg-orange-100 text-orange-600" : 
-                  "bg-red-100 text-red-600"
-                )}>
-                  {product.quantity > 0 ? `${product.quantity} units left` : 'Out of Stock'}
-                </p>
+              <p className="text-sm text-gray-500 mb-8 line-clamp-3">{product.description}</p>
+              <div className="flex items-center justify-between pt-6 border-t border-gray-50">
+                <div>
+                  <p className="text-xs text-gray-400 uppercase font-bold mb-1">Available Stock</p>
+                  <p className={cn(
+                    "text-sm font-bold",
+                    product.quantity > 20 ? "text-green-600" : 
+                    product.quantity > 0 ? "text-orange-600" : 
+                    "text-red-600"
+                  )}>
+                    {product.quantity > 0 ? `${product.quantity} units` : 'Out of Stock'}
+                  </p>
+                </div>
                 <button 
-                  disabled={product.quantity === 0}
+                  disabled={product.quantity === 0 || orderLoading === product.id}
                   onClick={() => handlePlaceOrder(product, 1)}
-                  className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed min-w-[120px] justify-center"
                 >
-                  <Plus className="w-4 h-4" /> Order Now
+                  {orderLoading === product.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Plus className="w-4 h-4" /> Order Now</>}
                 </button>
               </div>
             </div>
@@ -241,18 +316,24 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
   const renderCrops = () => {
     const [newCrop, setNewCrop] = useState({ name: '', season: 'Kharif', area: '', yield: '' });
     
-    const addCrop = (e: React.FormEvent) => {
+    const addCrop = async (e: React.FormEvent) => {
       e.preventDefault();
-      const plan: CropPlan = {
-        id: `cp-${Date.now()}`,
-        farmerId: currentUser!.id,
-        cropName: newCrop.name,
+      if (!currentUser) return;
+
+      const { error } = await supabase.from('crop_plans').insert({
+        farmer_id: currentUser.id,
+        crop_name: newCrop.name,
         season: newCrop.season,
         area: newCrop.area,
-        expectedYield: newCrop.yield
-      };
-      setCropPlans([...cropPlans, plan]);
-      setNewCrop({ name: '', season: 'Kharif', area: '', yield: '' });
+        expected_yield: newCrop.yield
+      });
+
+      if (error) {
+        console.error('Error adding crop plan:', error);
+        alert('Failed to add crop plan.');
+      } else {
+        setNewCrop({ name: '', season: 'Kharif', area: '', yield: '' });
+      }
     };
 
     return (
@@ -294,7 +375,7 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
                   <div>
                     <label className="block text-sm font-semibold text-gray-700 mb-1">Area (Acres)</label>
                     <input 
-                      type="number" 
+                      type="text" 
                       value={newCrop.area}
                       onChange={e => setNewCrop({...newCrop, area: e.target.value})}
                       className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:ring-2 focus:ring-primary-500 outline-none"
@@ -327,7 +408,7 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
                       <div className="bg-primary-100 p-2 rounded-xl text-primary-700">
                         <Sprout className="w-5 h-5" />
                       </div>
-                      <h4 className="text-xl font-bold">{plan.cropName}</h4>
+                      <h4 className="text-xl font-bold">{plan.crop_name}</h4>
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
@@ -340,7 +421,7 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
                       </div>
                       <div className="col-span-2">
                         <p className="text-xs text-gray-400 uppercase font-bold">Expected Yield</p>
-                        <p className="font-semibold">{plan.expectedYield}</p>
+                        <p className="font-semibold">{plan.expected_yield}</p>
                       </div>
                     </div>
                   </div>
@@ -362,17 +443,23 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
   const renderWater = () => {
     const [newRecord, setNewRecord] = useState({ amount: '', source: 'Canal' });
     
-    const addRecord = (e: React.FormEvent) => {
+    const addRecord = async (e: React.FormEvent) => {
       e.preventDefault();
-      const record: WaterRecord = {
-        id: `wr-${Date.now()}`,
-        farmerId: currentUser!.id,
-        date: new Date().toISOString(),
+      if (!currentUser) return;
+
+      const { error } = await supabase.from('water_records').insert({
+        farmer_id: currentUser.id,
         amount: Number(newRecord.amount),
-        source: newRecord.source
-      };
-      setWaterRecords([...waterRecords, record]);
-      setNewRecord({ amount: '', source: 'Canal' });
+        source: newRecord.source,
+        date: new Date().toISOString()
+      });
+
+      if (error) {
+        console.error('Error adding water record:', error);
+        alert('Failed to log water usage.');
+      } else {
+        setNewRecord({ amount: '', source: 'Canal' });
+      }
     };
 
     return (
@@ -451,13 +538,31 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
 
   const renderProfile = () => {
     const [profile, setProfile] = useState(currentUser?.profile || {
-      name: '', village: '', phone: '', landArea: '', email: '', avatar: ''
+      name: '', village: '', phone: '', land_area: '', email: '', avatar_url: ''
     });
 
-    const saveProfile = (e: React.FormEvent) => {
+    const saveProfile = async (e: React.FormEvent) => {
       e.preventDefault();
-      setCurrentUser({ ...currentUser!, profile });
-      setIsEditingProfile(false);
+      if (!currentUser) return;
+
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          name: profile.name,
+          village: profile.village,
+          phone: profile.phone,
+          land_area: profile.land_area,
+          email: profile.email
+        })
+        .eq('id', currentUser.id);
+
+      if (error) {
+        console.error('Error updating profile:', error);
+        alert('Failed to update profile.');
+      } else {
+        setCurrentUser({ ...currentUser, profile });
+        setIsEditingProfile(false);
+      }
     };
 
     return (
@@ -466,7 +571,7 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
           <div className="h-48 bg-linear-to-r from-primary-600 to-primary-800 relative">
             <div className="absolute -bottom-16 left-12">
               <div className="w-32 h-32 rounded-3xl border-4 border-white shadow-xl bg-white overflow-hidden">
-                <img src={profile.avatar} alt="Avatar" className="w-full h-full object-cover" />
+                <img src={profile.avatar_url} alt="Avatar" className="w-full h-full object-cover" />
               </div>
             </div>
           </div>
@@ -519,8 +624,8 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
                   <label className="block text-sm font-semibold text-gray-700 mb-1">Land Area (Acres)</label>
                   <input 
                     type="text" 
-                    value={profile.landArea}
-                    onChange={e => setProfile({...profile, landArea: e.target.value})}
+                    value={profile.land_area}
+                    onChange={e => setProfile({...profile, land_area: e.target.value})}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 focus:ring-2 focus:ring-primary-500 outline-none"
                   />
                 </div>
@@ -562,7 +667,7 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
                   <Sprout className="text-primary-600 w-6 h-6" />
                   <div>
                     <p className="text-xs text-gray-400 uppercase font-bold">Land Area</p>
-                    <p className="font-semibold">{profile.landArea ? `${profile.landArea} Acres` : 'Not set'}</p>
+                    <p className="font-semibold">{profile.land_area ? `${profile.land_area} Acres` : 'Not set'}</p>
                   </div>
                 </div>
               </div>
@@ -601,25 +706,47 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
         {activeTab === 'water' && renderWater()}
         {activeTab === 'weather' && (
           <div className="max-w-2xl mx-auto">
-            <h2 className="text-3xl font-bold text-gray-900 mb-8">Weather Forecast</h2>
-            <div className="bg-white p-10 rounded-3xl shadow-xl border border-gray-100 text-center">
-              <CloudSun className="w-24 h-24 text-primary-600 mx-auto mb-6" />
-              <p className="text-5xl font-bold text-gray-900 mb-2">{weather?.temp}°C</p>
-              <p className="text-xl text-gray-500 mb-8">{weather?.condition}</p>
-              <div className="grid grid-cols-2 gap-8 mb-10">
-                <div className="p-6 bg-gray-50 rounded-2xl">
-                  <p className="text-xs text-gray-400 uppercase font-bold mb-2">Humidity</p>
-                  <p className="text-2xl font-bold text-primary-700">{weather?.humidity}%</p>
-                </div>
-                <div className="p-6 bg-gray-50 rounded-2xl">
-                  <p className="text-xs text-gray-400 uppercase font-bold mb-2">Wind Speed</p>
-                  <p className="text-2xl font-bold text-primary-700">{weather?.windSpeed} km/h</p>
-                </div>
-              </div>
-              <div className="bg-primary-50 p-6 rounded-2xl border border-primary-100">
-                <p className="text-primary-800 font-medium italic">"{weather?.advice}"</p>
-              </div>
+            <div className="flex items-center justify-between mb-8">
+              <h2 className="text-3xl font-bold text-gray-900">Weather Forecast</h2>
+              <button onClick={handleGetLocation} className="btn-blue flex items-center gap-2">
+                <Navigation className="w-4 h-4" /> Update Location
+              </button>
             </div>
+            {weatherLoading ? (
+              <div className="bg-white p-20 rounded-3xl shadow-xl border border-gray-100 text-center">
+                <Loader2 className="w-12 h-12 text-primary-600 animate-spin mx-auto mb-4" />
+                <p className="text-gray-500">Fetching local weather...</p>
+              </div>
+            ) : weather ? (
+              <div className="bg-white p-10 rounded-3xl shadow-xl border border-gray-100 text-center">
+                <div className="flex items-center justify-center gap-2 text-gray-400 mb-4">
+                  <MapPin className="w-5 h-5" />
+                  <span className="font-bold uppercase tracking-widest text-sm">{weather.location}</span>
+                </div>
+                <CloudSun className="w-24 h-24 text-primary-600 mx-auto mb-6" />
+                <p className="text-5xl font-bold text-gray-900 mb-2">{weather.temp}°C</p>
+                <p className="text-xl text-gray-500 mb-8">{weather.condition}</p>
+                <div className="grid grid-cols-2 gap-8 mb-10">
+                  <div className="p-6 bg-gray-50 rounded-2xl">
+                    <p className="text-xs text-gray-400 uppercase font-bold mb-2">Humidity</p>
+                    <p className="text-2xl font-bold text-primary-700">{weather.humidity}%</p>
+                  </div>
+                  <div className="p-6 bg-gray-50 rounded-2xl">
+                    <p className="text-xs text-gray-400 uppercase font-bold mb-2">Wind Speed</p>
+                    <p className="text-2xl font-bold text-primary-700">{weather.windSpeed} km/h</p>
+                  </div>
+                </div>
+                <div className="bg-primary-50 p-6 rounded-2xl border border-primary-100">
+                  <p className="text-primary-800 font-medium italic">"{weather.advice}"</p>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-white p-20 rounded-3xl shadow-xl border border-gray-100 text-center">
+                <AlertCircle className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <p className="text-gray-500 mb-6">Weather data unavailable. Please enable location access.</p>
+                <button onClick={handleGetLocation} className="btn-primary">Enable Location</button>
+              </div>
+            )}
           </div>
         )}
         {activeTab === 'profile' && renderProfile()}

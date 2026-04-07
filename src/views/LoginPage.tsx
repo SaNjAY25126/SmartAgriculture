@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { UserRole } from '../types';
 import { useApp } from '../AppContext';
-import { DEMO_CREDENTIALS } from '../constants';
-import { ArrowLeft, Lock, User as UserIcon, AlertCircle } from 'lucide-react';
+import { supabase } from '../supabase';
+import { ArrowLeft, Lock, User as UserIcon, AlertCircle, Mail, Loader2 } from 'lucide-react';
 
 interface LoginPageProps {
   role: UserRole;
@@ -11,50 +11,98 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ role, onBack }) => {
-  const { setCurrentUser, farmers, setFarmers } = useApp();
-  const [username, setUsername] = useState('');
+  const { setCurrentUser } = useApp();
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
+  const [isSignUp, setIsSignUp] = useState(false);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setLoading(true);
 
-    if (role === 'farmer') {
-      if (!username.trim()) {
-        setError('Please enter a username');
-        return;
-      }
-      
-      let farmer = farmers.find(f => f.username.toLowerCase() === username.toLowerCase());
-      if (!farmer) {
-        farmer = {
-          id: `f-${Date.now()}`,
-          username,
-          role: 'farmer',
-          profile: {
-            name: username,
-            village: '',
-            phone: '',
-            landArea: '',
-            email: '',
-            avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`
+    try {
+      if (role === 'farmer') {
+        if (isSignUp) {
+          // Sign Up
+          const { data: authData, error: authError } = await supabase.auth.signUp({
+            email,
+            password,
+            options: {
+              data: { username, role: 'farmer' }
+            }
+          });
+
+          if (authError) throw authError;
+
+          if (authData.user) {
+            alert('Sign up successful! Please check your email for verification (if enabled) and then login.');
+            setIsSignUp(false);
           }
-        };
-        setFarmers([...farmers, farmer]);
-      }
-      setCurrentUser(farmer);
-    } else {
-      const creds = DEMO_CREDENTIALS[role as 'dealer' | 'admin'];
-      if (username === creds.username && password === creds.password) {
-        setCurrentUser({
-          id: role,
-          username: role.charAt(0).toUpperCase() + role.slice(1),
-          role
-        });
+        } else {
+          // Sign In
+          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+            email,
+            password
+          });
+
+          if (authError) throw authError;
+
+          if (authData.user) {
+            const { data: profileData, error: profileError } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', authData.user.id)
+              .single();
+
+            if (profileError) throw profileError;
+
+            setCurrentUser({
+              id: profileData.id,
+              username: profileData.username,
+              role: profileData.role,
+              profile: profileData
+            });
+          }
+        }
       } else {
-        setError('Invalid credentials. Check demo info below.');
+        // Dealer/Admin Login (using Supabase Auth but with specific roles)
+        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+
+        if (authError) throw authError;
+
+        if (authData.user) {
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', authData.user.id)
+            .single();
+
+          if (profileError) throw profileError;
+
+          if (profileData.role !== role) {
+            await supabase.auth.signOut();
+            throw new Error(`Access denied. You do not have ${role} privileges.`);
+          }
+
+          setCurrentUser({
+            id: profileData.id,
+            username: profileData.username,
+            role: profileData.role,
+            profile: profileData
+          });
+        }
       }
+    } catch (err: any) {
+      setError(err.message || 'An error occurred during authentication.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -83,46 +131,61 @@ export const LoginPage: React.FC<LoginPageProps> = ({ role, onBack }) => {
 
         <div className="bg-white rounded-3xl shadow-2xl p-8 md:p-10">
           <div className="text-center mb-8">
-            <h2 className="text-3xl font-bold text-gray-900 capitalize mb-2">{role} Login</h2>
+            <h2 className="text-3xl font-bold text-gray-900 capitalize mb-2">{role} {isSignUp ? 'Sign Up' : 'Login'}</h2>
             <p className="text-gray-500">
               {role === 'farmer' 
-                ? 'Enter your username to access your farm dashboard' 
-                : `Use demo credentials to access the ${role} portal`}
+                ? (isSignUp ? 'Create your farmer account' : 'Access your farm dashboard')
+                : `Enter your ${role} credentials`}
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-6">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Username</label>
-              <div className="relative">
-                <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <input 
-                  type="text" 
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-12 pr-4 focus:ring-2 focus:ring-primary-500 outline-none"
-                  placeholder="Enter username"
-                  required
-                />
-              </div>
-            </div>
-
-            {role !== 'farmer' && (
+          <form onSubmit={handleLogin} className="space-y-4">
+            {role === 'farmer' && isSignUp && (
               <div>
-                <label className="block text-sm font-semibold text-gray-700 mb-2">Password</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-1">Username</label>
                 <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                  <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <input 
-                    type="password" 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    type="text" 
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
                     className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-12 pr-4 focus:ring-2 focus:ring-primary-500 outline-none"
-                    placeholder="Enter password"
+                    placeholder="Choose a username"
                     required
                   />
                 </div>
               </div>
             )}
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Email Address</label>
+              <div className="relative">
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input 
+                  type="email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-12 pr-4 focus:ring-2 focus:ring-primary-500 outline-none"
+                  placeholder="Enter your email"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+                <input 
+                  type="password" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl py-3 pl-12 pr-4 focus:ring-2 focus:ring-primary-500 outline-none"
+                  placeholder="Enter password"
+                  required
+                />
+              </div>
+            </div>
 
             {error && (
               <div className="bg-red-50 text-red-600 p-4 rounded-xl flex items-start gap-3">
@@ -131,18 +194,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({ role, onBack }) => {
               </div>
             )}
 
-            <button type="submit" className="w-full btn-primary py-4 text-lg">
-              Login to Dashboard
+            <button 
+              type="submit" 
+              disabled={loading}
+              className="w-full btn-primary py-4 text-lg flex items-center justify-center gap-2"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (isSignUp ? 'Sign Up' : 'Login')}
             </button>
           </form>
 
+          {role === 'farmer' && (
+            <div className="mt-6 text-center">
+              <button 
+                onClick={() => setIsSignUp(!isSignUp)}
+                className="text-primary-700 font-semibold hover:underline"
+              >
+                {isSignUp ? 'Already have an account? Login' : "Don't have an account? Sign Up"}
+              </button>
+            </div>
+          )}
+
           {role !== 'farmer' && (
             <div className="mt-8 p-4 bg-primary-50 rounded-2xl border border-primary-100">
-              <p className="text-xs font-bold text-primary-700 uppercase tracking-wider mb-2">Demo Credentials</p>
-              <div className="text-sm text-primary-900 space-y-1">
-                <p><span className="font-semibold">User:</span> {DEMO_CREDENTIALS[role as 'dealer' | 'admin'].username}</p>
-                <p><span className="font-semibold">Pass:</span> {DEMO_CREDENTIALS[role as 'dealer' | 'admin'].password}</p>
-              </div>
+              <p className="text-xs font-bold text-primary-700 uppercase tracking-wider mb-2">Admin/Dealer Note</p>
+              <p className="text-xs text-primary-900">
+                Please use the accounts created in Supabase Auth with the appropriate role assigned in the <code className="bg-primary-100 px-1 rounded">profiles</code> table.
+              </p>
             </div>
           )}
         </div>

@@ -11,17 +11,20 @@ import {
   Clock, 
   AlertCircle,
   TrendingUp,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
 import { useApp } from '../AppContext';
+import { supabase } from '../supabase';
 import { Product, Order, OrderStatus } from '../types';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 
 export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) => {
-  const { products, setProducts, orders, setOrders } = useApp();
+  const { products, orders } = useApp();
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const stats = {
     totalProducts: products.length,
@@ -30,12 +33,23 @@ export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
     pendingOrders: orders.filter(o => o.status === 'pending').length
   };
 
-  const handleUpdateOrderStatus = (orderId: string, status: OrderStatus) => {
-    setOrders(orders.map(o => o.id === orderId ? { ...o, status } : o));
+  const handleUpdateOrderStatus = async (orderId: string, status: OrderStatus) => {
+    try {
+      const { error } = await supabase
+        .from('orders')
+        .update({ status })
+        .eq('id', orderId);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      alert('Failed to update order status.');
+    }
   };
 
-  const handleSaveProduct = (e: React.FormEvent) => {
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
+    setLoading(true);
     const form = e.target as HTMLFormElement;
     const formData = new FormData(form);
     
@@ -44,20 +58,40 @@ export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
       price: Number(formData.get('price')),
       quantity: Number(formData.get('quantity')),
       description: formData.get('description') as string,
-      category: formData.get('category') as string,
-      image: formData.get('image') as string || `https://picsum.photos/seed/${formData.get('name')}/400/300`
+      category: formData.get('category') as string
     };
 
-    if (editingProduct) {
-      setProducts(products.map(p => p.id === editingProduct.id ? { ...p, ...productData } : p));
-      setEditingProduct(null);
-    } else {
-      const newProduct: Product = {
-        id: `p-${Date.now()}`,
-        ...productData
-      };
-      setProducts([newProduct, ...products]);
-      setIsAddingProduct(false);
+    try {
+      if (editingProduct) {
+        const { error } = await supabase
+          .from('products')
+          .update(productData)
+          .eq('id', editingProduct.id);
+        if (error) throw error;
+        setEditingProduct(null);
+      } else {
+        const { error } = await supabase
+          .from('products')
+          .insert(productData);
+        if (error) throw error;
+        setIsAddingProduct(false);
+      }
+    } catch (error) {
+      console.error('Error saving product:', error);
+      alert('Failed to save product.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteProduct = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this product?')) return;
+    try {
+      const { error } = await supabase.from('products').delete().eq('id', id);
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      alert('Failed to delete product.');
     }
   };
 
@@ -95,19 +129,23 @@ export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
         </div>
       </div>
 
+      {stats.lowStock > 0 && (
+        <div className="bg-orange-50 border border-orange-200 p-4 rounded-2xl flex items-center gap-3 text-orange-700">
+          <AlertCircle className="w-5 h-5" />
+          <p className="text-sm font-bold">Attention: {stats.lowStock} products are running low on stock. Please consider restocking soon.</p>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
         {products.map(product => (
-          <div key={product.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="h-40 relative">
-              <img src={product.image} alt={product.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-              <div className="absolute top-4 right-4 bg-white/90 backdrop-blur-sm px-3 py-1 rounded-full text-xs font-bold text-primary-700">
-                {product.category}
-              </div>
-            </div>
-            <div className="p-6">
+          <div key={product.id} className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden group">
+            <div className="p-8">
               <div className="flex justify-between items-start mb-4">
                 <div>
-                  <h4 className="text-xl font-bold text-gray-900">{product.name}</h4>
+                  <div className="bg-primary-50 text-primary-700 px-3 py-1 rounded-full text-xs font-bold w-fit mb-2">
+                    {product.category}
+                  </div>
+                  <h4 className="text-2xl font-bold text-gray-900">{product.name}</h4>
                   <p className="text-sm text-primary-600 font-bold">₹{product.price}</p>
                 </div>
                 <div className={cn(
@@ -119,7 +157,8 @@ export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
                   {product.quantity} in stock
                 </div>
               </div>
-              <div className="flex gap-2">
+              <p className="text-sm text-gray-500 mb-8 line-clamp-2">{product.description}</p>
+              <div className="flex gap-2 pt-6 border-t border-gray-50">
                 <button 
                   onClick={() => setEditingProduct(product)}
                   className="flex-1 btn-blue py-2 flex items-center justify-center gap-2 text-sm"
@@ -127,7 +166,7 @@ export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
                   <Edit2 className="w-4 h-4" /> Edit
                 </button>
                 <button 
-                  onClick={() => setProducts(products.filter(p => p.id !== product.id))}
+                  onClick={() => handleDeleteProduct(product.id)}
                   className="btn-red p-2 rounded-xl"
                 >
                   <Trash2 className="w-5 h-5" />
@@ -188,8 +227,8 @@ export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
                       <textarea name="description" defaultValue={editingProduct?.description} rows={3} className="w-full bg-gray-50 border border-gray-200 rounded-xl p-3 outline-none focus:ring-2 focus:ring-primary-500" />
                     </div>
                   </div>
-                  <button type="submit" className="w-full btn-primary py-4 text-lg mt-4">
-                    {editingProduct ? 'Update Product' : 'Create Product'}
+                  <button type="submit" disabled={loading} className="w-full btn-primary py-4 text-lg mt-4 flex items-center justify-center gap-2">
+                    {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : (editingProduct ? 'Update Product' : 'Create Product')}
                   </button>
                 </form>
               </div>
@@ -218,11 +257,11 @@ export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
               </div>
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <h4 className="text-xl font-bold">{order.productName}</h4>
+                  <h4 className="text-xl font-bold">{order.product_name}</h4>
                   <span className="text-sm text-gray-400">x {order.quantity}</span>
                 </div>
                 <p className="text-sm text-gray-500 flex items-center gap-2">
-                  Ordered by <span className="font-bold text-gray-700">{order.farmerName}</span> • {format(new Date(order.date), 'MMM d, h:mm a')}
+                  Ordered by <span className="font-bold text-gray-700">{order.farmer_name}</span> • {format(new Date(order.created_at), 'MMM d, h:mm a')}
                 </p>
               </div>
             </div>
@@ -230,7 +269,7 @@ export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
             <div className="flex items-center gap-8">
               <div className="text-right">
                 <p className="text-xs text-gray-400 uppercase font-bold mb-1">Total Amount</p>
-                <p className="text-xl font-bold text-primary-700">₹{order.totalPrice}</p>
+                <p className="text-xl font-bold text-primary-700">₹{order.total_price}</p>
               </div>
               
               <div className="flex items-center gap-2">

@@ -8,9 +8,10 @@ import { AdminDashboard } from './views/AdminDashboard';
 import { Sidebar } from './components/Sidebar';
 import { UserRole } from './types';
 import { AnimatePresence, motion } from 'motion/react';
+import { Loader2 } from 'lucide-react';
 
 const AppContent: React.FC = () => {
-  const { currentUser } = useApp();
+  const { currentUser, loading } = useApp();
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
 
@@ -20,6 +21,17 @@ const AppContent: React.FC = () => {
     if (currentUser?.role === 'dealer') setActiveTab('inventory');
     if (currentUser?.role === 'admin') setActiveTab('overview');
   }, [currentUser?.role]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-12 h-12 text-primary-600 animate-spin" />
+          <p className="text-gray-500 font-medium font-sans">Loading Smart Agriculture System...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!currentUser) {
     if (!selectedRole) {

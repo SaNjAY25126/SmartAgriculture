@@ -8,12 +8,15 @@ export interface User {
 }
 
 export interface FarmerProfile {
+  id: string;
+  username: string;
+  role: UserRole;
   name: string;
   village: string;
   phone: string;
-  landArea: string;
+  land_area: string;
   email: string;
-  avatar: string;
+  avatar_url: string;
 }
 
 export interface Product {
@@ -23,37 +26,38 @@ export interface Product {
   quantity: number;
   description: string;
   category: string;
-  image: string;
+  created_at: string;
 }
 
 export type OrderStatus = 'pending' | 'processing' | 'completed' | 'cancelled';
 
 export interface Order {
   id: string;
-  farmerId: string;
-  farmerName: string;
-  productId: string;
-  productName: string;
+  farmer_id: string;
+  farmer_name: string;
+  product_id: string;
+  product_name: string;
   quantity: number;
-  totalPrice: number;
+  total_price: number;
   status: OrderStatus;
-  date: string;
+  created_at: string;
 }
 
 export interface CropPlan {
   id: string;
-  farmerId: string;
-  cropName: string;
+  farmer_id: string;
+  crop_name: string;
   season: string;
   area: string;
-  expectedYield: string;
+  expected_yield: string;
+  created_at: string;
 }
 
 export interface WaterRecord {
   id: string;
-  farmerId: string;
+  farmer_id: string;
   date: string;
-  amount: number; // in liters or cubic meters
+  amount: number;
   source: string;
 }
 
@@ -63,4 +67,5 @@ export interface WeatherData {
   humidity: number;
   windSpeed: number;
   advice: string;
+  location?: string;
 }

@@ -1,7 +1,6 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, Product, Order, CropPlan, WaterRecord } from './types';
-import { storage } from './lib/utils';
-import { INITIAL_PRODUCTS } from './constants';
+import { User, Product, Order, CropPlan, WaterRecord, FarmerProfile } from './types';
+import { supabase } from './supabase';
 
 interface AppContextType {
   currentUser: User | null;
@@ -10,40 +9,94 @@ interface AppContextType {
   setProducts: (products: Product[]) => void;
   orders: Order[];
   setOrders: (orders: Order[]) => void;
-  farmers: User[];
-  setFarmers: (farmers: User[]) => void;
+  farmers: FarmerProfile[];
+  setFarmers: (farmers: FarmerProfile[]) => void;
   cropPlans: CropPlan[];
   setCropPlans: (plans: CropPlan[]) => void;
   waterRecords: WaterRecord[];
   setWaterRecords: (records: WaterRecord[]) => void;
-  resetData: () => void;
+  refreshData: () => Promise<void>;
+  resetData: () => Promise<void>;
+  loading: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<User | null>(storage.get('currentUser', null));
-  const [products, setProducts] = useState<Product[]>(storage.get('products', INITIAL_PRODUCTS));
-  const [orders, setOrders] = useState<Order[]>(storage.get('orders', []));
-  const [farmers, setFarmers] = useState<User[]>(storage.get('farmers', []));
-  const [cropPlans, setCropPlans] = useState<CropPlan[]>(storage.get('cropPlans', []));
-  const [waterRecords, setWaterRecords] = useState<WaterRecord[]>(storage.get('waterRecords', []));
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [farmers, setFarmers] = useState<FarmerProfile[]>([]);
+  const [cropPlans, setCropPlans] = useState<CropPlan[]>([]);
+  const [waterRecords, setWaterRecords] = useState<WaterRecord[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => { storage.set('currentUser', currentUser); }, [currentUser]);
-  useEffect(() => { storage.set('products', products); }, [products]);
-  useEffect(() => { storage.set('orders', orders); }, [orders]);
-  useEffect(() => { storage.set('farmers', farmers); }, [farmers]);
-  useEffect(() => { storage.set('cropPlans', cropPlans); }, [cropPlans]);
-  useEffect(() => { storage.set('waterRecords', waterRecords); }, [waterRecords]);
+  const fetchData = async () => {
+    try {
+      const [
+        { data: productsData },
+        { data: ordersData },
+        { data: profilesData },
+        { data: cropPlansData },
+        { data: waterRecordsData }
+      ] = await Promise.all([
+        supabase.from('products').select('*').order('name'),
+        supabase.from('orders').select('*').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('*'),
+        supabase.from('crop_plans').select('*'),
+        supabase.from('water_records').select('*')
+      ]);
 
-  const resetData = () => {
-    setProducts(INITIAL_PRODUCTS);
-    setOrders([]);
-    setFarmers([]);
-    setCropPlans([]);
-    setWaterRecords([]);
-    setCurrentUser(null);
-    localStorage.clear();
+      if (productsData) setProducts(productsData);
+      if (ordersData) setOrders(ordersData);
+      if (profilesData) setFarmers(profilesData);
+      if (cropPlansData) setCropPlans(cropPlansData);
+      if (waterRecordsData) setWaterRecords(waterRecordsData);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    // Initial fetch
+    fetchData();
+
+    // Check auth state
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user) {
+        supabase.from('profiles').select('*').eq('id', session.user.id).single()
+          .then(({ data }) => {
+            if (data) setCurrentUser({ id: data.id, username: data.username, role: data.role, profile: data });
+          });
+      }
+    });
+
+    // Real-time subscriptions
+    const productSub = supabase.channel('products-all')
+      .on('postgres_changes' as any, { event: '*', table: 'products' }, fetchData)
+      .subscribe();
+
+    const orderSub = supabase.channel('orders-all')
+      .on('postgres_changes' as any, { event: '*', table: 'orders' }, fetchData)
+      .subscribe();
+
+    const profileSub = supabase.channel('profiles-all')
+      .on('postgres_changes' as any, { event: '*', table: 'profiles' }, fetchData)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(productSub);
+      supabase.removeChannel(orderSub);
+      supabase.removeChannel(profileSub);
+    };
+  }, []);
+
+  const resetData = async () => {
+    // In a real app, this would be a backend function or specific deletes
+    // For demo, we just re-fetch
+    await fetchData();
   };
 
   return (
@@ -54,7 +107,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       farmers, setFarmers,
       cropPlans, setCropPlans,
       waterRecords, setWaterRecords,
-      resetData
+      refreshData: fetchData,
+      resetData,
+      loading
     }}>
       {children}
     </AppContext.Provider>
