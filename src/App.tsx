@@ -15,6 +15,10 @@ const AppContent: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<UserRole | null>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
 
+  useEffect(() => {
+    console.log('App State:', { currentUser: currentUser?.username, role: currentUser?.role, loading });
+  }, [currentUser, loading]);
+
   // Reset active tab when role changes
   useEffect(() => {
     if (currentUser?.role === 'farmer') setActiveTab('dashboard');

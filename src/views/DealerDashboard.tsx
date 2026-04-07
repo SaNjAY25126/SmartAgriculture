@@ -21,7 +21,7 @@ import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 
 export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) => {
-  const { products, orders } = useApp();
+  const { products, orders, refreshData } = useApp();
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -41,6 +41,7 @@ export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
         .eq('id', orderId);
 
       if (error) throw error;
+      await refreshData();
     } catch (error) {
       console.error('Error updating order status:', error);
       alert('Failed to update order status.');
@@ -68,12 +69,14 @@ export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
           .update(productData)
           .eq('id', editingProduct.id);
         if (error) throw error;
+        await refreshData();
         setEditingProduct(null);
       } else {
         const { error } = await supabase
           .from('products')
           .insert(productData);
         if (error) throw error;
+        await refreshData();
         setIsAddingProduct(false);
       }
     } catch (error) {
@@ -89,6 +92,7 @@ export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
     try {
       const { error } = await supabase.from('products').delete().eq('id', id);
       if (error) throw error;
+      await refreshData();
     } catch (error) {
       console.error('Error deleting product:', error);
       alert('Failed to delete product.');

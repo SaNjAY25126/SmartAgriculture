@@ -19,89 +19,103 @@ export const LoginPage: React.FC<LoginPageProps> = ({ role, onBack }) => {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
+    const timeoutId = setTimeout(() => {
+      setLoading(false);
+      setError('Authentication timed out. Please try again.');
+    }, 15000);
+
     try {
-      if (role === 'farmer') {
-        if (isSignUp) {
-          // Sign Up
-          const { data: authData, error: authError } = await supabase.auth.signUp({
-            email,
-            password,
-            options: {
-              data: { username, role: 'farmer' }
-            }
-          });
-
-          if (authError) throw authError;
-
-          if (authData.user) {
-            alert('Sign up successful! Please check your email for verification (if enabled) and then login.');
-            setIsSignUp(false);
-          }
-        } else {
-          // Sign In
-          const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-            email,
-            password
-          });
-
-          if (authError) throw authError;
-
-          if (authData.user) {
-            const { data: profileData, error: profileError } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', authData.user.id)
-              .single();
-
-            if (profileError) throw profileError;
-
-            setCurrentUser({
-              id: profileData.id,
-              username: profileData.username,
-              role: profileData.role,
-              profile: profileData
-            });
-          }
-        }
-      } else {
-        // Dealer/Admin Login (using Supabase Auth but with specific roles)
-        const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+      if (isSignUp) {
+        console.log('Attempting sign up...');
+        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email,
-          password
+          password,
+          options: {
+            data: {
+              username: username || email.split('@')[0],
+              role: 'farmer',
+              password: password // For simulation purposes
+            }
+          }
         });
 
-        if (authError) throw authError;
-
-        if (authData.user) {
-          const { data: profileData, error: profileError } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', authData.user.id)
-            .single();
-
-          if (profileError) throw profileError;
-
-          if (profileData.role !== role) {
-            await supabase.auth.signOut();
-            throw new Error(`Access denied. You do not have ${role} privileges.`);
-          }
-
-          setCurrentUser({
-            id: profileData.id,
-            username: profileData.username,
-            role: profileData.role,
-            profile: profileData
-          });
+        if (signUpError) throw signUpError;
+        
+        if (signUpData.user) {
+          alert('Sign up successful! You can now log in.');
+          setIsSignUp(false);
+          setLoading(false);
+          return;
         }
       }
+
+      console.log(`Attempting login for role: ${role}`);
+      
+      // 1. Try Real Supabase Auth First
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (!authError && authData.user) {
+        console.log('Real Auth successful, fetching profile...');
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', authData.user.id)
+          .single();
+
+        if (profileError) throw new Error('Profile not found.');
+        
+        if (role !== 'farmer' && profileData.role !== role) {
+          await supabase.auth.signOut();
+          throw new Error(`Access denied. You do not have ${role} privileges.`);
+        }
+
+        setCurrentUser({
+          id: profileData.id,
+          username: profileData.username,
+          role: profileData.role,
+          profile: profileData
+        });
+        return;
+      }
+
+      // 2. Fallback: Check Profiles Table (Demo Mode)
+      console.log('Real Auth failed, checking Profiles table (Demo Mode)...');
+      const { data: demoProfile, error: demoError } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('email', email)
+        .eq('password', password)
+        .single();
+
+      if (demoError || !demoProfile) {
+        throw new Error('Invalid login credentials. Please check your email and password.');
+      }
+
+      if (role !== 'farmer' && demoProfile.role !== role) {
+        throw new Error(`Access denied. You do not have ${role} privileges.`);
+      }
+
+      console.log('Demo Login successful!');
+      setCurrentUser({
+        id: demoProfile.id,
+        username: demoProfile.username,
+        role: demoProfile.role,
+        profile: demoProfile
+      });
+
     } catch (err: any) {
+      console.error('Authentication error:', err);
       setError(err.message || 'An error occurred during authentication.');
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   };
@@ -139,7 +153,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ role, onBack }) => {
             </p>
           </div>
 
-          <form onSubmit={handleLogin} className="space-y-4">
+          <form onSubmit={handleAuth} className="space-y-4">
             {role === 'farmer' && isSignUp && (
               <div>
                 <label className="block text-sm font-semibold text-gray-700 mb-1">Username</label>
@@ -211,6 +225,32 @@ export const LoginPage: React.FC<LoginPageProps> = ({ role, onBack }) => {
               >
                 {isSignUp ? 'Already have an account? Login' : "Don't have an account? Sign Up"}
               </button>
+            </div>
+          )}
+
+          {!isSignUp && (
+            <div className="mt-8 pt-6 border-t border-gray-100">
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-3 text-center">Quick Demo Login</p>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => {
+                    setEmail('ram@farm.com');
+                    setPassword('ram123');
+                  }}
+                  className="text-xs bg-gray-50 hover:bg-emerald-50 text-gray-600 hover:text-emerald-700 py-2.5 px-3 rounded-xl border border-gray-200 transition-all font-medium"
+                >
+                  Farmer (Ram)
+                </button>
+                <button
+                  onClick={() => {
+                    setEmail('dealer1@smartagri.com');
+                    setPassword('dealer123');
+                  }}
+                  className="text-xs bg-gray-50 hover:bg-emerald-50 text-gray-600 hover:text-emerald-700 py-2.5 px-3 rounded-xl border border-gray-200 transition-all font-medium"
+                >
+                  Dealer
+                </button>
+              </div>
             </div>
           )}
 

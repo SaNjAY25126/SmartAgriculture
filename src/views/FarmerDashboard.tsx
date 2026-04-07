@@ -32,7 +32,8 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
     products, 
     orders,
     cropPlans, setCropPlans,
-    waterRecords, setWaterRecords
+    waterRecords, setWaterRecords,
+    refreshData
   } = useApp();
 
   const [weather, setWeather] = useState<WeatherData | null>(null);
@@ -117,6 +118,7 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
 
       if (productError) throw productError;
 
+      await refreshData();
       setShowOrderSuccess(true);
       setTimeout(() => setShowOrderSuccess(false), 3000);
     } catch (error) {
@@ -332,6 +334,7 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
         console.error('Error adding crop plan:', error);
         alert('Failed to add crop plan.');
       } else {
+        await refreshData();
         setNewCrop({ name: '', season: 'Kharif', area: '', yield: '' });
       }
     };
@@ -458,6 +461,7 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
         console.error('Error adding water record:', error);
         alert('Failed to log water usage.');
       } else {
+        await refreshData();
         setNewRecord({ amount: '', source: 'Canal' });
       }
     };

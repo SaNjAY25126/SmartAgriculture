@@ -31,45 +31,148 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [waterRecords, setWaterRecords] = useState<WaterRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchData = async () => {
+  const fetchData = async (userId?: string) => {
     try {
+      // 1. Fetch Public Data (Always accessible)
       const [
-        { data: productsData },
-        { data: ordersData },
-        { data: profilesData },
-        { data: cropPlansData },
-        { data: waterRecordsData }
+        { data: productsData, error: pError },
+        { data: profilesData, error: prError }
       ] = await Promise.all([
         supabase.from('products').select('*').order('name'),
-        supabase.from('orders').select('*').order('created_at', { ascending: false }),
-        supabase.from('profiles').select('*'),
-        supabase.from('crop_plans').select('*'),
-        supabase.from('water_records').select('*')
+        supabase.from('profiles').select('*')
       ]);
 
+      if (pError) console.error('Products error:', pError);
+      if (prError) console.error('Profiles error:', prError);
+
       if (productsData) setProducts(productsData);
-      if (ordersData) setOrders(ordersData);
       if (profilesData) setFarmers(profilesData);
-      if (cropPlansData) setCropPlans(cropPlansData);
-      if (waterRecordsData) setWaterRecords(waterRecordsData);
+
+      // 2. Fetch Private Data (Only if logged in)
+      if (userId) {
+        const [
+          { data: ordersData, error: oError },
+          { data: cropPlansData, error: cpError },
+          { data: waterRecordsData, error: wrError }
+        ] = await Promise.all([
+          supabase.from('orders').select('*').eq('farmer_id', userId).order('created_at', { ascending: false }),
+          supabase.from('crop_plans').select('*').eq('farmer_id', userId),
+          supabase.from('water_records').select('*').eq('farmer_id', userId)
+        ]);
+
+        if (oError) console.error('Orders error:', oError);
+        if (cpError) console.error('Crop plans error:', cpError);
+        if (wrError) console.error('Water records error:', wrError);
+
+        if (ordersData) setOrders(ordersData);
+        if (cropPlansData) setCropPlans(cropPlansData);
+        if (waterRecordsData) setWaterRecords(waterRecordsData);
+      } else {
+        // Clear private data if not logged in
+        setOrders([]);
+        setCropPlans([]);
+        setWaterRecords([]);
+      }
     } catch (error) {
       console.error('Error fetching data:', error);
+    }
+  };
+
+  const loadData = async () => {
+    setLoading(true);
+    const timeoutId = setTimeout(() => setLoading(false), 8000);
+    try {
+      await fetchData(currentUser?.id);
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    // Initial fetch
-    fetchData();
+    if (currentUser?.id) {
+      console.log('Current user changed, fetching private data for:', currentUser.id);
+      fetchData(currentUser.id);
+    } else {
+      console.log('Current user is null, fetching public data only');
+      fetchData();
+    }
+  }, [currentUser?.id]);
 
-    // Check auth state
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        supabase.from('profiles').select('*').eq('id', session.user.id).single()
-          .then(({ data }) => {
-            if (data) setCurrentUser({ id: data.id, username: data.username, role: data.role, profile: data });
+  useEffect(() => {
+    let mounted = true;
+
+    const initialize = async () => {
+      setLoading(true);
+      const timeoutId = setTimeout(() => {
+        if (mounted) setLoading(false);
+      }, 8000);
+      
+      try {
+        // 1. Check current session first
+        const { data: { session } } = await supabase.auth.getSession();
+        let userId = undefined;
+
+        if (session?.user && mounted) {
+          userId = session.user.id;
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          
+          if (profile && mounted) {
+            setCurrentUser({
+              id: profile.id,
+              username: profile.username,
+              role: profile.role,
+              profile
+            });
+          }
+        }
+
+        // 2. Fetch data with userId context
+        await fetchData(userId);
+
+      } catch (err) {
+        console.error('Initialization error:', err);
+      } finally {
+        clearTimeout(timeoutId);
+        if (mounted) setLoading(false);
+      }
+    };
+
+    initialize();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('Auth Event:', event, session?.user?.id);
+      if (event === 'SIGNED_IN' && session?.user) {
+        const { data: profile, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (error) {
+          console.error('Auth change profile fetch error:', error);
+        }
+
+        if (profile && mounted) {
+          console.log('Auth change: setting user profile', profile.role);
+          setCurrentUser({
+            id: profile.id,
+            username: profile.username,
+            role: profile.role,
+            profile
           });
+          // Fetch private data after login
+          fetchData(profile.id);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        console.log('Auth change: user signed out');
+        setCurrentUser(null);
+        fetchData(); // Fetch only public data
       }
     });
 
@@ -87,6 +190,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .subscribe();
 
     return () => {
+      mounted = false;
+      subscription.unsubscribe();
       supabase.removeChannel(productSub);
       supabase.removeChannel(orderSub);
       supabase.removeChannel(profileSub);
@@ -107,7 +212,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       farmers, setFarmers,
       cropPlans, setCropPlans,
       waterRecords, setWaterRecords,
-      refreshData: fetchData,
+      refreshData: loadData,
       resetData,
       loading
     }}>

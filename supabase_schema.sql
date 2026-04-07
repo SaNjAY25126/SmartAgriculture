@@ -10,6 +10,7 @@ CREATE TABLE profiles (
   phone TEXT,
   land_area TEXT,
   email TEXT,
+  password TEXT, -- WARNING: Storing plain-text passwords is highly insecure. For simulation only.
   avatar_url TEXT,
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
@@ -65,24 +66,18 @@ ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE crop_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE water_records ENABLE ROW LEVEL SECURITY;
 
--- Policies
-CREATE POLICY "Public profiles are viewable by everyone" ON profiles FOR SELECT USING (true);
-CREATE POLICY "Users can insert their own profile" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
-CREATE POLICY "Users can update their own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
+-- ==========================================
+-- RELAX RLS FOR DEMO/SIMULATION MODE
+-- ==========================================
+-- These policies allow the 'public' (anon) role to perform all actions
+-- to support the simulation mode where users might not be in Supabase Auth.
+-- IMPORTANT: In a production app, these should be restricted to authenticated users.
 
-CREATE POLICY "Products are viewable by everyone" ON products FOR SELECT USING (true);
-CREATE POLICY "Dealers and Admins can manage products" ON products FOR ALL USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('dealer', 'admin'))
-);
-
-CREATE POLICY "Farmers can view their own orders" ON orders FOR SELECT USING (auth.uid() = farmer_id);
-CREATE POLICY "Farmers can create orders" ON orders FOR INSERT WITH CHECK (auth.uid() = farmer_id);
-CREATE POLICY "Dealers and Admins can view and update all orders" ON orders FOR ALL USING (
-  EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('dealer', 'admin'))
-);
-
-CREATE POLICY "Farmers can manage their own crop plans" ON crop_plans FOR ALL USING (auth.uid() = farmer_id);
-CREATE POLICY "Farmers can manage their own water records" ON water_records FOR ALL USING (auth.uid() = farmer_id);
+CREATE POLICY "Profiles: Public access" ON profiles FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "Products: Public access" ON products FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "Orders: Public access" ON orders FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "Crop Plans: Public access" ON crop_plans FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "Water Records: Public access" ON water_records FOR ALL TO public USING (true) WITH CHECK (true);
 
 -- ==========================================
 -- AUTOMATIC PROFILE CREATION TRIGGER
@@ -92,12 +87,13 @@ CREATE POLICY "Farmers can manage their own water records" ON water_records FOR 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
-  INSERT INTO public.profiles (id, username, email, role, avatar_url)
+  INSERT INTO public.profiles (id, username, email, role, password, avatar_url)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'username', NEW.email),
     NEW.email,
     COALESCE(NEW.raw_user_meta_data->>'role', 'farmer'),
+    NEW.raw_user_meta_data->>'password', -- Capturing password from metadata
     'https://api.dicebear.com/7.x/avataaars/svg?seed=' || NEW.id
   );
   RETURN NEW;
@@ -115,17 +111,17 @@ CREATE OR REPLACE TRIGGER on_auth_user_created
 
 -- 1. Seed Profiles (Note: In a real app, these would link to auth.users)
 -- We use fixed UUIDs for consistent seeding
-INSERT INTO profiles (id, username, role, name, village, phone, land_area, email) VALUES
-('00000000-0000-0000-0000-000000000001', 'admin_user', 'admin', 'System Administrator', 'Central Hub', '9998887776', 'N/A', 'admin@smartagri.com'),
-('00000000-0000-0000-0000-000000000002', 'dealer_north', 'dealer', 'North Fertilizer Co.', 'North Sector', '8887776665', 'N/A', 'dealer1@smartagri.com'),
-('00000000-0000-0000-0000-000000000003', 'dealer_south', 'dealer', 'South Agri Supplies', 'South Sector', '7776665554', 'N/A', 'dealer2@smartagri.com'),
-('00000000-0000-0000-0000-000000000004', 'farmer_ram', 'farmer', 'Ram Singh', 'Green Village', '6665554443', '10', 'ram@farm.com'),
-('00000000-0000-0000-0000-000000000005', 'farmer_shyam', 'farmer', 'Shyam Kumar', 'River Valley', '5554443332', '15', 'shyam@farm.com'),
-('00000000-0000-0000-0000-000000000006', 'farmer_anita', 'farmer', 'Anita Devi', 'Hill Top', '4443332221', '8', 'anita@farm.com'),
-('00000000-0000-0000-0000-000000000007', 'farmer_vijay', 'farmer', 'Vijay Pratap', 'Green Village', '3332221110', '12', 'vijay@farm.com'),
-('00000000-0000-0000-0000-000000000008', 'farmer_meena', 'farmer', 'Meena Kumari', 'River Valley', '2221110009', '5', 'meena@farm.com'),
-('00000000-0000-0000-0000-000000000009', 'farmer_rahul', 'farmer', 'Rahul Sharma', 'Hill Top', '1110009998', '20', 'rahul@farm.com'),
-('00000000-0000-0000-0000-000000000010', 'farmer_geeta', 'farmer', 'Geeta Patil', 'Green Village', '0009998887', '7', 'geeta@farm.com');
+INSERT INTO profiles (id, username, role, name, village, phone, land_area, email, password) VALUES
+('00000000-0000-0000-0000-000000000001', 'admin_user', 'admin', 'System Administrator', 'Central Hub', '9998887776', 'N/A', 'admin@smartagri.com', 'admin123'),
+('00000000-0000-0000-0000-000000000002', 'dealer_north', 'dealer', 'North Fertilizer Co.', 'North Sector', '8887776665', 'N/A', 'dealer1@smartagri.com', 'dealer123'),
+('00000000-0000-0000-0000-000000000003', 'dealer_south', 'dealer', 'South Agri Supplies', 'South Sector', '7776665554', 'N/A', 'dealer2@smartagri.com', 'dealer456'),
+('00000000-0000-0000-0000-000000000004', 'farmer_ram', 'farmer', 'Ram Singh', 'Green Village', '6665554443', '10', 'ram@farm.com', 'ram123'),
+('00000000-0000-0000-0000-000000000005', 'farmer_shyam', 'farmer', 'Shyam Kumar', 'River Valley', '5554443332', '15', 'shyam@farm.com', 'shyam123'),
+('00000000-0000-0000-0000-000000000006', 'farmer_anita', 'farmer', 'Anita Devi', 'Hill Top', '4443332221', '8', 'anita@farm.com', 'anita123'),
+('00000000-0000-0000-0000-000000000007', 'farmer_vijay', 'farmer', 'Vijay Pratap', 'Green Village', '3332221110', '12', 'vijay@farm.com', 'vijay123'),
+('00000000-0000-0000-0000-000000000008', 'farmer_meena', 'farmer', 'Meena Kumari', 'River Valley', '2221110009', '5', 'meena@farm.com', 'meena123'),
+('00000000-0000-0000-0000-000000000009', 'farmer_rahul', 'farmer', 'Rahul Sharma', 'Hill Top', '1110009998', '20', 'rahul@farm.com', 'rahul123'),
+('00000000-0000-0000-0000-000000000010', 'farmer_geeta', 'farmer', 'Geeta Patil', 'Green Village', '0009998887', '7', 'geeta@farm.com', 'geeta123');
 
 -- 2. Seed 20 Products
 INSERT INTO products (name, price, quantity, description, category) VALUES
