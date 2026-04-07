@@ -273,27 +273,6 @@ export const AdminDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) =
             </span>
           )},
         ])}
-        {activeTab === 'analytics' && (
-          <div className="space-y-8">
-            <h2 className="text-3xl font-bold text-gray-900">Advanced Analytics</h2>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-                <h3 className="text-xl font-bold mb-8">Monthly Order Trends</h3>
-                <div className="h-80 flex items-center justify-center text-gray-400 bg-gray-50 rounded-2xl border-2 border-dashed">
-                  <TrendingUp className="w-12 h-12 mb-2" />
-                  <p>Historical data visualization will appear here as orders accumulate.</p>
-                </div>
-              </div>
-              <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
-                <h3 className="text-xl font-bold mb-8">Farmer Geographic Distribution</h3>
-                <div className="h-80 flex items-center justify-center text-gray-400 bg-gray-50 rounded-2xl border-2 border-dashed">
-                  <Users className="w-12 h-12 mb-2" />
-                  <p>Village-wise distribution map will be available in the next update.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
         {activeTab === 'settings' && (
           <div className="max-w-2xl">
             <h2 className="text-3xl font-bold text-gray-900 mb-8">System Settings</h2>

@@ -39,7 +39,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeTab, setActiveTab }) => 
 
   const adminLinks = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-    { id: 'analytics', label: 'Analytics', icon: TrendingUp },
     { id: 'farmers', label: 'Farmers', icon: UserIcon },
     { id: 'products', label: 'Products', icon: Package },
     { id: 'orders', label: 'All Orders', icon: ShoppingCart },
