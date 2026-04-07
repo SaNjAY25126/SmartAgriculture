@@ -56,6 +56,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ role, onBack }) => {
 
       console.log(`Attempting login for role: ${role}`);
       
+      // 0. Check for Placeholder Configuration
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      if (!supabaseUrl || supabaseUrl.includes('placeholder')) {
+        throw new Error('Supabase Configuration Missing. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your deployment environment variables.');
+      }
+
       // 1. Try Real Supabase Auth First
       const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
         email,
@@ -125,7 +131,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ role, onBack }) => {
 
     } catch (err: any) {
       console.error('Authentication error:', err);
-      setError(err.message || 'An error occurred during authentication.');
+      let message = err.message || 'An error occurred during authentication.';
+      
+      // Handle Network/Fetch Errors (Missing Config)
+      if (message.includes('Failed to fetch') || message.includes('NetworkError')) {
+        message = 'Connection Error: Could not connect to Supabase. Please ensure VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY are correctly set in your deployment environment variables.';
+      }
+      
+      setError(message);
     } finally {
       clearTimeout(timeoutId);
       setLoading(false);

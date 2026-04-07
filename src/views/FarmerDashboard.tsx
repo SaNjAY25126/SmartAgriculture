@@ -121,9 +121,9 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
       await refreshData();
       setShowOrderSuccess(true);
       setTimeout(() => setShowOrderSuccess(false), 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error placing order:', error);
-      alert('Failed to place order. Please try again.');
+      alert(`Failed to place order: ${error.message || 'Unknown error'}`);
     } finally {
       setOrderLoading(null);
     }
@@ -332,7 +332,7 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
 
       if (error) {
         console.error('Error adding crop plan:', error);
-        alert('Failed to add crop plan.');
+        alert(`Failed to add crop plan: ${error.message || 'Unknown error'}`);
       } else {
         await refreshData();
         setNewCrop({ name: '', season: 'Kharif', area: '', yield: '' });
@@ -459,7 +459,7 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
 
       if (error) {
         console.error('Error adding water record:', error);
-        alert('Failed to log water usage.');
+        alert(`Failed to log water usage: ${error.message || 'Unknown error'}`);
       } else {
         await refreshData();
         setNewRecord({ amount: '', source: 'Canal' });
@@ -562,7 +562,7 @@ export const FarmerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
 
       if (error) {
         console.error('Error updating profile:', error);
-        alert('Failed to update profile.');
+        alert(`Failed to update profile: ${error.message || 'Unknown error'}`);
       } else {
         setCurrentUser({ ...currentUser, profile });
         setIsEditingProfile(false);

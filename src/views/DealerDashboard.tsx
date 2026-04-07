@@ -42,9 +42,9 @@ export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
 
       if (error) throw error;
       await refreshData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating order status:', error);
-      alert('Failed to update order status.');
+      alert(`Failed to update order status: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -79,9 +79,9 @@ export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
         await refreshData();
         setIsAddingProduct(false);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving product:', error);
-      alert('Failed to save product.');
+      alert(`Failed to save product: ${error.message || 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -93,9 +93,9 @@ export const DealerDashboard: React.FC<{ activeTab: string }> = ({ activeTab }) 
       const { error } = await supabase.from('products').delete().eq('id', id);
       if (error) throw error;
       await refreshData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error deleting product:', error);
-      alert('Failed to delete product.');
+      alert(`Failed to delete product: ${error.message || 'Unknown error'}`);
     }
   };
 
